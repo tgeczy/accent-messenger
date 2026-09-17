@@ -1,0 +1,26 @@
+{
+  "warning": "Experimental acoustic calibration, not recovered DSP equations.",
+  "source_sha256": {
+    "audio": "f9bf1e80b941819640f2d50c241039cd7372b15356f9e4d7c7455d03d490a900",
+    "script": "1cb91719b517aa3908c4113035c17cd53bd41abfd03c213154137c53a5e19845",
+    "driver": "a2963b7025b67c577e3e3839342d9f49c39c7039d0ffcad36b1f066c816a1572"
+  },
+  "models": {
+    "constant": {
+      "optimizer_success": true,
+      "parameters": [
+        121.91773898095933,
+        190.17503442316718,
+        192.40684192853323,
+        -27.589339554309568,
+        -83.95589795443541,
+        401.3798679093813,
+        26.35068806327574,
+        44.09100865285246,
+        36.10174070901944,
+        43.10518974754837
+      ]
+    }
+  },
+  "fit_report_sha256": "9c0c6f167df4d4b9d6bcc5729376c788e942e3cbbc82d890a5c9d7cca5b1d038"
+}

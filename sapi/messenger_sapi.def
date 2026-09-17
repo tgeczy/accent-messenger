@@ -1,0 +1,6 @@
+LIBRARY messenger_sapi
+EXPORTS
+ DllCanUnloadNow PRIVATE
+ DllGetClassObject PRIVATE
+ DllRegisterServer PRIVATE
+ DllUnregisterServer PRIVATE

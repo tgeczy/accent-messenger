@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Accent Messenger 0.4.0</title></head>
+<body>
+<h1>Accent Messenger 0.4.0</h1>
+<p>The original Aicom English pronunciation engine with a reconstructed sound
+model. The original DSP firmware remains unavailable.</p>
+<h2>Install and upgrade</h2>
+<p>Install the add-on, restart NVDA, and select Accent Messenger. Both 32-bit and
+64-bit engines are included. No separate Python or Visual C++ Redistributable
+installation is needed.</p>
+<p>The package is now named <code>accentMessenger</code>. If an experimental
+package is installed, a startup dialog asks whether to remove it. Choose Yes,
+then restart to finish. No leaves it installed and asks again next startup.
+Both packages supply the same synth module and must not remain together.
+Your existing Messenger voice settings are retained.</p>
+<h2>What changed</h2>
+<p>This version includes the approved straighter onset for isolated E/e, with
+or without a final period. It preserves the louder output, voice controls,
+consonant improvements and responsive cancellation of earlier builds.</p>
+<p>Leave "Read numbers as individual digits" unchecked for "one hundred" or
+check it for "one zero zero." It defaults to unchecked. English decimals and
+ordinals are supported through the number parser from Outspoken.</p>
+<p>A separate Accent Messenger SAPI installer provides the same engine for
+SAPI applications, with its own settings dialog and TOML preferences.</p>
+<h2>Compatibility</h2>
+<p>NVDA 2021.1 or later is the declared range. The native libraries target
+Windows 7 SP1 and later; use an NVDA version that supports your Windows version.
+Windows 7 and older NVDA still need real-machine testing. This release has passed
+native engine and simulated NVDA audio checks, not a full compatibility matrix.</p>
+<h2>Controls and limits</h2>
+<p>English pronunciation, with ten voice characteristics: V0 is deepest, V9
+sharpest, and V5 is the existing default. Other variants are experimental.
+Inflection uses five steps: 0 for monotone, 25/50/75 for reduced intonation,
+100 for full intonation (default). Word spacing runs from 0 (shortest, default)
+to 9; it adds pauses and cannot shorten the existing minimum. Rate, pitch and
+volume are independently adjustable. Cancellation, pause,
+speech indexes and breaks are supported. Long passages are split into short
+requests, which can change pauses and intonation. Text is transliterated to ASCII.
+Character-mode commands and per-command capital pitch changes are not yet
+implemented. The missing original DSP firmware has not been recovered.</p>
+<h2>Testing</h2>
+<p>Try ordinary navigation, holding and releasing Tab, Ctrl to stop, pause and
+resume, and reading a paragraph. Please include your Windows and NVDA versions
+when reporting results. Errors are recorded in NVDA's normal log.</p>
+<h2>Credits and source</h2>
+<p>Maintained by Tamas Geczy, with development assistance from OpenAI Codex.
+Original pronunciation software by Aicom. Native emulation uses Unicorn;
+Windows 7 support uses YY-Thunks. The complete source is available separately as
+<code>accent-messenger-0.4.0-source.zip</code>. Keep that companion
+download alongside the add-on when sharing this version. See LICENSE and THIRD-PARTY-NOTICES.md for component terms.</p>
+</body></html>
