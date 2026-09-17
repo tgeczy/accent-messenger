@@ -14,30 +14,51 @@ Redistributable installation.
 For me, these voices are part of the history of using a computer as a blind
 person. I want to be able to use them again, and I know I'm not the only one.
 
-Aicom Corporation in San Jose made the Accent-PC, the serial-connected
-Accent-SA, and the Messenger-IC, a speech card that fitted into a laptop's
-Type II PCMCIA slot. The Library of Congress's
+Aicom Corporation in San Jose made voices that reached computers in several
+forms: the internal Accent-PC, the serial-connected Accent-SA, and eventually
+the Messenger-IC, a speech card that fitted into a laptop's Type II PCMCIA slot.
+The Library of Congress's
 [January 1998 assistive-device catalogue](https://files.eric.ed.gov/fulltext/ED420140.pdf)
 still lists the products and Aicom as a supplier on printed pages 14 and 24.
+Barbara T. Mates's [2000 book on accessible technology](https://www.independentliving.org/docs6/mates2000.html),
+preserved by the Independent Living Institute, also lists Aicom and its
+Accent and Messenger products. These were tools people could buy to make
+their computers accessible.
 
 The sad part is how little of the company's later story is easy to recover.
-Aicom is remembered as having faded away, leaving this technology behind.
-I haven't established an exact closure date, what happened to its assets, or
-where a complete engineering archive might have gone. What I do have is old
-software and material that other enthusiasts took the trouble to preserve.
+The surviving catalogues tell me what Aicom sold, but they don't tell me how
+the company ended. I haven't established an exact closure date, a documented
+buyout, or what happened to its engineering archive. I don't want to fill
+those gaps with a story I can't verify.
+
+There are still traces of the work. Linux's Speakup screen reader has drivers
+for the [serial Accent-SA](https://github.com/torvalds/linux/blob/master/drivers/accessibility/speakup/speakup_acntsa.c)
+and [internal Accent-PC](https://github.com/torvalds/linux/blob/master/drivers/accessibility/speakup/speakup_acntpc.c).
+Those drivers communicate with the old hardware; they don't generate its
+voice themselves. Getting the voice back without a working card takes more
+of the original pieces.
 
 This project started while I was digging through OS/2 screen-reader drivers.
-Old Messenger disks, board photographs, demo recordings and captures of the
-data sent to the card gave us enough pieces to start making it talk. It took
-reverse engineering, listening, comparisons and a fair amount of patience.
-Now there's a voice people can actually install and use.
+In [a 2018 preservation thread](https://www.eevblog.com/forum/microcontrollers/nec-pd77p25gw-rom-dumping/),
+Treehouseman shared Messenger disk images, photographs and demo recordings
+while investigating how to recover the card's DSP program. That saved material,
+along with captures of the data sent to the card, gave us something to work
+from. The DOS software on those disks turned out to be a crucial part of the
+voice, even without the DSP dump.
+
+Then came the listening: vowels that dipped in volume, consonants that needed
+work, and all the small details that become obvious when you use speech to
+read a computer all day. My ears and other people's feedback helped turn the
+first understandable sounds into a voice I could actually use. That's what
+I wanted from this project: a piece of blind computing history speaking again
+in the applications we use now.
 
 ## What is original, and what is reconstructed?
 
 The preserved disks contain real, runnable Aicom code: `SPKMIC.TSR`, the
-original DOS driver. It handles English pronunciation and produces the speech
-parameters. I run that software in an x86 emulator for each utterance. A new
-sound generator turns those parameters into audio.
+original DOS driver, included here in `assets/`. It handles English pronunciation
+and produces the speech parameters. I run that software in an x86 emulator for
+each utterance. A new sound generator turns those parameters into audio.
 
 The Messenger's original DSP firmware is still missing. That means this is a
 reconstruction of its sound, with the original pronunciation engine underneath.
@@ -45,6 +66,14 @@ It isn't bit-exact emulation of the card. If the original DSP program and any
 required external data are recovered, an emulated DSP could provide another
 sound backend. The older Accent-SA and its SSI-263 sound are a separate problem;
 this project does not emulate that chip.
+
+There is another useful name for researching the older hardware: **Aicom
+AI901**. In his [survey of vintage speech synthesizers](https://www.smbaker.com/vintage-speech-synthesizers),
+Scott Baker groups it with the Votrax SC-02, SSI-263 and Artic 263, which he
+identifies as apparently the same chip under different branding. That gives
+us more names to search for when looking for documentation and preserved
+hardware. The Messenger card uses a NEC DSP, so finding an AI901 reference
+doesn't by itself recover the Messenger's missing program.
 
 ## Installing the NVDA add-on
 
@@ -143,16 +172,18 @@ against `native/dependencies.json`. It unpacks that source into the ignored
 `.build/` folder. There is no locally patched Unicorn fork to maintain here.
 
 The finished DLLs link Unicorn statically, so users don't install it separately.
-The companion release source ZIP includes the unmodified upstream archive as
-part of the corresponding source. Keeping the dependency out of Git and
-providing its source with the release are two different parts of the build.
+GitHub's automatic source ZIP contains the files tracked in this repository.
+The companion release source archive also includes the unmodified Unicorn
+archive needed for the complete corresponding source of the DLLs. You only
+need the add-on or installer to use the voice.
 
 ## Source and credits
 
 The new code is GPLv2; see [LICENSE](LICENSE). The original Aicom driver and
 the other components have their own provenance and terms, recorded in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). If you share the binaries,
-please keep the matching `accent-messenger-0.4.0-source.zip` alongside them.
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). That includes the original
+driver's copyright notice: calling it abandonware describes the preservation
+problem, not a new license for Aicom's code.
 
 Thanks to the people who saved the old software and hardware material, and to
 everyone listening and helping me make the voice better.
