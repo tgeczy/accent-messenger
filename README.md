@@ -4,6 +4,35 @@ Version **0.4.0** provides the Accent Messenger NVDA add-on and a native SAPI 5
 engine, using the original Aicom English pronunciation software and a reconstructed
 sound generator. The original Messenger DSP firmware remains unavailable.
 
+## Aicom and the voice we are preserving
+
+Aicom Corporation in San Jose made speech products for computer access,
+including the Accent-PC, the serial-connected Accent-SA, and the Messenger-IC
+card for laptops with a Type II PCMCIA slot. The Library of Congress's
+[January 1998 assistive-device catalogue](https://files.eric.ed.gov/fulltext/ED420140.pdf)
+still lists these products and Aicom as a supplier (printed pages 14 and 24).
+For blind users, speech like this was part of the everyday experience of using
+a computer. Keeping those familiar voices usable is the reason for this project.
+
+Aicom's later story is much harder to reconstruct than its product line. The
+company is remembered as having faded away, leaving its technology behind, but
+this project has not established a definite closure date, an acquisition trail,
+or the whereabouts of a complete engineering archive. The surviving pieces we
+can work with are historical software and material saved by hardware enthusiasts.
+
+This revival began while investigating old OS/2 screen-reader drivers. Preserved
+Messenger disks, board photographs, demonstration recordings and host-to-card
+captures provided the route forward. The original DOS driver still contains
+the pronunciation engine and generates speech parameters. Running that driver
+in an emulator, then reconstructing the sound generator and refining it through
+listening, made speech possible again without the missing DSP program.
+
+The goal is to preserve a usable piece of blind computing history while keeping
+clear which parts are original and which have been reconstructed. The older
+Accent-SA and its SSI-263 sound remain a separate emulation problem.
+
+## Download and install
+
 Download the [NVDA add-on, SAPI installer and matching source](https://github.com/tgeczy/accent-messenger/releases/tag/v0.4.0).
 
 Install `accent-messenger-0.4.0.nvda-addon` and select **Accent Messenger**.
