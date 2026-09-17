@@ -1,15 +1,14 @@
-# Original voice controls and louder output
+# Voice controls
 
-Tomi confirms 0.3.6 removed the objectionable wavering in live NVDA. Preserve
-its renderer. Version 0.3.7 changes final output gain and exposes commands
-already implemented by the original pronunciation driver.
+NVDA and SAPI expose voice commands implemented by the original pronunciation
+driver. The sound generator reconstructs their acoustic effect.
 
 The local original `demo_utility_1/MANUAL.DOC`, sections 3.2.2.14 through
 3.2.2.18, documents pitch P0..9, voice characteristic V0..9, rate R0..H,
 intonation M0..4, and word spacing S0..9. DEMO1.TXT uses M1 for its robotic
 voice and restores M0; DEMO2.TXT varies both pitch and voice characteristic.
 
-| NVDA control | Original command | Default |
+| Control | Original command | Default |
 | --- | --- | --- |
 | Voice V0..V9 | V0..V9 | V5 |
 | Inflection 0,25,50,75,100 | M1,M2,M3,M4,M0 | 100 (M0) |
@@ -27,12 +26,19 @@ Spacing is already at the driver's shortest setting. Changing it cannot make
 the default more connected; separate NVDA requests, indexes and 160-character
 chunks can also affect continuity. No silence trimming is introduced here.
 
-Output gain is a fixed factor of two after the existing synthesis/output curve.
+## Output level
+
+Output gain is a fixed factor of two after the synthesis/output curve.
 It does not measure or smooth output loudness. Existing final integer clipping
 remains a bound for exceptional peaks. The control sweep includes all ten voices,
 all five intonation modes, spacing extremes and selected pitch/rate extremes;
 none of those trials clips. This is not an exhaustive guarantee for all text.
-The default voice at volume 50 must reproduce 0.3.6 at volume 100 exactly.
+At default voice settings, volume 50 matches version 0.3.6 at volume 100,
+except for the isolated E/e onset correction added in 0.4.0. That correction
+retains full master level at the first voiced record for E/e with an optional
+final period. It leaves the original driver's raw records unchanged.
+
+## Queued settings and validation
 
 Development checks compared original-driver frames and headroom with the native
 option path and research renderer, including restoration to defaults,

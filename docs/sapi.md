@@ -35,10 +35,7 @@ registration necessarily use it. The settings change supplies shared preferences
 it does not configure NVDA to run on sign-in or secure screens. Actual speech
 on those screens still needs live testing.
 
-The real Windows stream test rejected the initial per-user token with access
-denied before calling the engine; the machine token passed. A related
-[Wine test correction](https://github.com/wine-mirror/wine/commit/327667a620b1d0c9f8dd47b9a85343a7badd4b20)
-uses the same registry-root change.
+## Settings and speech behavior
 
 The settings file uses these defaults (ReadDigits is 0 or 1):
 
@@ -63,8 +60,8 @@ alphabet mapping is not implemented.
 
 XML and application rate/volume are combined as specified in Microsoft's
 [SAPI engine porting guide](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee431802(v=vs.85)).
-The old-host zero-byte-write retry follows the local Votrax SAPI adapter, with
-cancellation polling and a five-second no-progress timeout.
+Zero-byte output writes are retried with cancellation polling and a five-second
+no-progress timeout.
 
 Cancellation is checked during synthesis and while writing 20 ms audio blocks.
 The initialized DOS engine is retained; no speech cache is used. One settings
@@ -72,13 +69,14 @@ file is read at each utterance. No transcript or diagnostic log is written.
 
 The original DSP firmware remains unavailable. This is the original Aicom
 pronunciation engine with a reconstructed sound generator, not a bit-exact
-DSP emulation. The name has changed because the add-on is usable, not because
-the missing firmware was recovered.
+DSP emulation.
+
+## Compatibility and build
 
 Both builds use MinSizeRel, static Visual C++ runtime, Windows 7 SP1 targets
 and YY-Thunks. Windows 7 still needs real-machine validation. No external
-Python or Visual C++ Redistributable is required. The matching source archive
-is `accent-messenger-0.4.0-source.zip`, shared with the NVDA release.
+Python or Visual C++ Redistributable is required. The companion source archive
+covers both SAPI and NVDA; see the [build guide](native-release.md).
 
 Build with Visual Studio 2022, Windows SDK, CMake, Python and Inno Setup 6:
 `python tools/prepare_native.py`, then `python tools/build_sapi.py`.
@@ -86,7 +84,10 @@ The build only stages and packages files; it does not register voices or play
 audio. Native SAPI tests use a process-local registry override and capture
 PCM without selecting an audio device.
 
-Validation covers both architectures: real Windows SpVoice output to an in-memory
+## Validation
+
+The maintainer has confirmed live SAPI speech. Automated validation covers both
+architectures: real Windows SpVoice output to an in-memory
 PCM stream, COM lifetime and isolated registration/unregistration, grouped
 bookmarks, partial and zero-byte writes, cancellation during rendering and output,
 volume, settings restoration, and 242 English number-parser comparisons per
