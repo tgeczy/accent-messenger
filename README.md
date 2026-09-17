@@ -164,6 +164,16 @@ The native engine lives in `native/`, the NVDA adapter in `nvda-addon/`, and
 the SAPI engine and settings tool in `sapi/`. Build scripts produce files in
 `dist/`; they don't install or register the voice on your machine.
 
+### Running tests
+
+The `tests/` folder contains the maintained Python checks. Install the development
+dependencies with `python -m pip install -r requirements-dev.txt`, then run
+`python -m pytest`. Number reading and text preparation run without an engine
+build. Use `python -m pytest --run-integration` on Windows after building the
+native and SAPI test targets to include speech, cancellation, NVDA and SAPI
+checks. The [test instructions](docs/native-release.md#tests) explain the builds
+and how to test both architectures without playing audio or installing a voice.
+
 ### How Unicorn is handled
 
 I don't vendor a Unicorn source tree in this Git repository. The preparation

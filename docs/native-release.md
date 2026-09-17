@@ -72,7 +72,6 @@ cmake -S . -B build-x86 -G "Visual Studio 17 2022" -A Win32
 cmake --build build-x86 --config MinSizeRel --target messenger --parallel
 python tools/audit_native.py
 python tools/build_nvda.py --driver assets/SPKMIC.TSR --fit assets/calibration.json
-python tools/test_native_nvda.py
 ```
 
 Preparation downloads the pinned, hash-verified Unicorn source into `.build/`.
@@ -87,6 +86,49 @@ The shipped objects match that release's official binaries.
 
 Build tools write to `dist/`; they do not install the add-on. Packaging uses
 explicit source paths and excludes private notes and research artifacts.
+
+## Tests
+
+Use Python 3.10 or newer for pytest. This is a development dependency, separate
+from the older Python versions supported by the installed add-on.
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The default run checks English number reading and text preparation without
+loading a DLL. Windows integration checks are skipped with an explanation.
+To run them, build both native architectures above and the SAPI targets:
+
+```powershell
+python tools/build_sapi.py
+cmake --build build-x64 --config MinSizeRel --target sapi_test settings_test --parallel
+cmake --build build-x86 --config MinSizeRel --target sapi_test settings_test --parallel
+python -m pytest --run-integration
+```
+
+The SAPI build also packages its installer when Inno Setup is available. Tests
+themselves never rebuild or overwrite release artifacts. Once enabled, missing
+builds fail the run rather than silently skipping coverage.
+
+Integration checks exercise 128 native speech cases and 20 cancellation/recovery
+trials for the selected Python architecture, 14 NVDA adapter checks, and both
+SAPI architectures with 242 number-parser comparisons each. NVDA runs current
+source with a built DLL and simulated audio; SAPI captures real SpVoice output
+in memory, tests shared settings, and compares output across architectures.
+No audio device is opened, no real voice is registered, and personal settings
+are not touched. Reports and staged files use pytest's temporary directory.
+
+To exercise native/NVDA checks under both architectures, repeat
+`--engine-python=path/to/python.exe` with your 64-bit and 32-bit Python paths.
+Use the equals sign so pytest doesn't treat an interpreter path as a test path.
+Those child interpreters use only the standard library and need no pytest
+installation. The default is the interpreter running pytest.
+
+For release-package verification, the standalone runner also accepts
+`python tests/runners/nvda_checks.py --addon path/to/file.nvda-addon`.
+Private acoustic experiments are outside pytest collection and the source ZIP.
 
 ## Source layout
 

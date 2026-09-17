@@ -1,8 +1,9 @@
-"""Packaged native engine with NVDA API/audio doubles. Does not drive live NVDA."""
+"""Current source or packaged add-on with NVDA doubles; never drives live NVDA."""
 import argparse
 import hashlib
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 import struct
 import sys
@@ -13,17 +14,33 @@ import types
 import unittest
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--addon', type=Path, default=ROOT / 'dist/accent-messenger-0.4.0.nvda-addon')
-ADDON = parser.parse_args().addon
-SCRATCH = Path(tempfile.mkdtemp(prefix='Messenger native test '))
-with zipfile.ZipFile(ADDON) as archive:
-    for name in archive.namelist():
-        if SCRATCH.resolve() not in (SCRATCH / name).resolve().parents:
-            raise ValueError('Unsafe archive member')
-    archive.extractall(SCRATCH)
+parser.add_argument('--addon', type=Path, help='Test a packaged add-on instead of current source')
+parser.add_argument('--scratch', type=Path, help='New directory for the isolated add-on copy')
+parser.add_argument('--output', type=Path, help='JSON report path')
+args = parser.parse_args()
+ADDON = args.addon
+SCRATCH = args.scratch or Path(tempfile.mkdtemp(prefix='Messenger native test ')) / 'addon'
+SCRATCH.parent.mkdir(parents=True, exist_ok=True)
+if ADDON:
+    SCRATCH.mkdir(exist_ok=False)
+    with zipfile.ZipFile(ADDON) as archive:
+        for name in archive.namelist():
+            if SCRATCH.resolve() not in (SCRATCH / name).resolve().parents:
+                raise ValueError('Unsafe archive member')
+        archive.extractall(SCRATCH)
+else:
+    shutil.copytree(ROOT / 'nvda-addon', SCRATCH,
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
 PACKAGE = SCRATCH / 'synthDrivers/messengerExperimental'
+if not ADDON:
+    arch = 'x64' if struct.calcsize('P') == 8 else 'x86'
+    (PACKAGE / arch).mkdir()
+    (PACKAGE / 'data').mkdir()
+    shutil.copy2(ROOT / ('build-' + arch) / 'MinSizeRel/messenger.dll', PACKAGE / arch)
+    for name in ('SPKMIC.TSR', 'calibration.json'):
+        shutil.copy2(ROOT / 'assets' / name, PACKAGE / 'data')
 
 
 class Event:
@@ -439,11 +456,13 @@ class AdapterTests(unittest.TestCase):
 
 if __name__ == '__main__':
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(AdapterTests))
-    report = {'addon_sha256': hashlib.sha256(ADDON.read_bytes()).hexdigest(),
+    report = {'addon_sha256': hashlib.sha256(ADDON.read_bytes()).hexdigest() if ADDON else None,
               'tests_run': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
               'successful': result.wasSuccessful(), 'live_nvda_tested': False,
-              'scope': 'Packaged native engine; NVDA API/audio doubles. No audio played.'}
+              'scope': 'Packaged add-on' if ADDON else 'Current source and built DLL; NVDA API/audio doubles. No audio played.'}
     name = 'native-nvda-test-report-%s-%s.json' % (struct.calcsize('P')*8, sys.version.split()[0])
-    (ROOT / 'dist' / name).write_text(json.dumps(report, indent=2))
+    output = args.output or ROOT / 'dist' / name
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))
     sys.exit(0 if result.wasSuccessful() else 1)

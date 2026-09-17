@@ -9,12 +9,13 @@ import sys
 import threading
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--reference', action='store_true')
 parser.add_argument('--package', type=Path)
 parser.add_argument('--stress-count', type=int, default=20)
 parser.add_argument('--skip-corpus', action='store_true')
+parser.add_argument('--output', type=Path, help='JSON report path')
 args = parser.parse_args()
 package = args.package or ROOT / 'nvda-addon/synthDrivers/messengerExperimental'
 spec = importlib.util.spec_from_file_location('messenger_native_test', str(package / 'engine.py'))
@@ -88,9 +89,9 @@ for delay in ([0, .0005, .002, .01, .03]*((args.stress_count+4)//5))[:args.stres
 engine.close()
 report['passed'] = True
 report['reference_checked'] = bool(reference)
-output = ROOT / 'dist' / ('native-' + ('stress-' if args.skip_corpus else 'test-') + arch + '-' + report['python'] + '.json')
-output.parent.mkdir(exist_ok=True)
+output = args.output or ROOT / 'dist' / ('native-' + ('stress-' if args.skip_corpus else 'test-') + arch + '-' + report['python'] + '.json')
+output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
 print(json.dumps({'report': str(output), 'passed': True, 'cases': len(report['cases']),
-                  'init_ms': report['init_ms'], 'maximum_cancel_ms': max(report['cancellation_ms']),
+                  'init_ms': report['init_ms'], 'maximum_cancel_ms': max(report['cancellation_ms'], default=0),
                   'maximum_sample_delta': max((r.get('max_sample_delta', 0) for r in report['cases']), default=0)}, indent=2))

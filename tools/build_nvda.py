@@ -46,14 +46,15 @@ def main():
     sources = dist / (NAME + '-' + VERSION + '-source.zip')
     # Explicit source roots exclude private memories and unrelated scratch files.
     with zipfile.ZipFile(sources, 'w') as z:
-        for folder in ('native', 'nvda-addon', 'sapi'):
+        for folder in ('native', 'nvda-addon', 'sapi', 'tests'):
             for path in sorted((ROOT / folder).rglob('*')):
                 if path.is_file() and '__pycache__' not in path.parts:
                     add(z, path, path.relative_to(ROOT).as_posix())
         for name in ('CMakeLists.txt', '.clang-format', '.gitignore', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'docs/native-release.md',
                      'docs/voice-controls.md', 'docs/sapi.md',
-                     'README.md', 'tools/build_nvda.py', 'tools/build_sapi.py', 'tools/test_sapi.py', 'tools/audit_sapi.py', 'tools/prepare_native.py', 'tools/test_native.py',
-                     'tools/test_native_nvda.py', 'tools/test_numwords.py', 'tools/audit_native.py'):
+                     'README.md', 'pytest.ini', 'requirements-dev.txt',
+                     'tools/build_nvda.py', 'tools/build_sapi.py', 'tools/audit_sapi.py',
+                     'tools/prepare_native.py', 'tools/audit_native.py'):
             add(z, ROOT / name, name)
         add(z, ROOT / '.build/unicorn-2.1.4.tar.gz', '.build/unicorn-2.1.4.tar.gz')
         add(z, args.driver, 'assets/SPKMIC.TSR')
