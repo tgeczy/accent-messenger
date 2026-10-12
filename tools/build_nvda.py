@@ -7,7 +7,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER_HASH = 'a2963b7025b67c577e3e3839342d9f49c39c7039d0ffcad36b1f066c816a1572'
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 NAME = 'accent-messenger'
 ADDON_ID = 'accentMessenger'  # Explicit migration; synth ID stays messengerExperimental.
 

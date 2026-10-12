@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='0.4.0'
+VERSION='0.5.0'
 
 
 def main():

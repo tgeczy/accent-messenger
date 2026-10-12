@@ -1,6 +1,6 @@
 # Accent Messenger SAPI
 
-Install `accent-messenger-sapi-0.4.0-setup.exe` with administrator approval,
+Install `accent-messenger-sapi-0.5.0-setup.exe` with administrator approval,
 then select **Accent Messenger** in a SAPI 5 application. Both 32-bit and
 64-bit clients are supported. Close speech applications before updating.
 The installer does not change your default voice. Uninstall through Windows

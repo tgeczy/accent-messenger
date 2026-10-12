@@ -58,7 +58,7 @@ for rate, pitch, volume in ([] if args.skip_corpus else [(5, 5, 100), (0, 0, 73)
             start = time.perf_counter()
             old, stats = reference.synthesize(text, rate, pitch, volume, noise_scale=10**(-3/20),
                                               formant_setup=True, voiced_exponent=.2, p_transition=True,
-                                              straight_e=True)
+                                              straight_e=True, voiced_emphasis=.8, output_headroom=.94)
             row['reference_ms'] = (time.perf_counter()-start)*1000
             assert engine.frames() == bytes(reference.probe.dsp_bytes), row
             assert len(old) == len(pcm), row

@@ -28,15 +28,23 @@ chunks can also affect continuity. No silence trimming is introduced here.
 
 ## Output level
 
-Output gain is a fixed factor of two after the synthesis/output curve.
+Output gain is a fixed factor of 1.88 after the synthesis/output curve
+(the existing twofold boost with a 0.94 headroom factor added in 0.5.0).
 It does not measure or smooth output loudness. Existing final integer clipping
 remains a bound for exceptional peaks. The control sweep includes all ten voices,
 all five intonation modes, spacing extremes and selected pitch/rate extremes;
 none of those trials clips. This is not an exhaustive guarantee for all text.
-At default voice settings, volume 50 matches version 0.3.6 at volume 100,
-except for the isolated E/e onset correction added in 0.4.0. That correction
-retains full master level at the first voiced record for E/e with an optional
-final period. It leaves the original driver's raw records unchanged.
+
+Version 0.5.0 strengthens the upper harmonics of the periodic source and
+includes that response in the filter-bank gain calculation. This brightens
+voiced sounds without changing the driver's amplitude targets, the existing
+sonorant level curve, or the separate consonant-noise paths. It is a listening-
+selected reconstruction, not a recovered DSP equation. Output samples differ
+from earlier releases even at the same settings.
+
+The isolated E/e onset correction added in 0.4.0 retains full master level at
+the first voiced record for E/e with an optional final period. It leaves the
+original driver's raw records unchanged.
 
 ## Queued settings and validation
 

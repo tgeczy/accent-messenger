@@ -9,6 +9,10 @@ If you just want to try it, [download the latest release](https://github.com/tge
 You don't need the original card, Python, NumPy, or a separate Visual C++
 Redistributable installation.
 
+Version 0.5.0 gives the voice a brighter, clearer tone based on comparisons
+with original Messenger recordings. The change strengthens upper harmonics
+in voiced sounds while retaining the existing pronunciation and timing.
+
 ## Why I wanted to save this voice
 
 For me, these voices are part of the history of using a computer as a blind
@@ -77,7 +81,7 @@ doesn't by itself recover the Messenger's missing program.
 
 ## Installing the NVDA add-on
 
-Download `accent-messenger-0.4.0.nvda-addon` from the release page, install it,
+Download `accent-messenger-0.5.0.nvda-addon` from the release page, install it,
 restart NVDA, and select **Accent Messenger** in the synthesizer dialog.
 
 If you have one of the experimental builds, a startup dialog asks to remove
@@ -90,7 +94,7 @@ download to keep the installed add-on small.
 
 ## Installing the SAPI voice
 
-Run `accent-messenger-sapi-0.4.0-setup.exe` with administrator approval. It
+Run `accent-messenger-sapi-0.5.0-setup.exe` with administrator approval. It
 installs the voice for both 32-bit and 64-bit SAPI applications. Select
 **Accent Messenger** in whichever application you use for speech.
 

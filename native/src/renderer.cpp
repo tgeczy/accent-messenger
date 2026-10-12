@@ -12,6 +12,11 @@
 
 namespace {
 constexpr double pi = 3.14159265358979323846, fs = 16000;
+// Listening-selected periodic-source colour. Include the same response in
+// tonal gain prediction so this changes harmonic balance, not source level.
+constexpr double voicedEmphasis = .8;
+// Fixed headroom for the stronger harmonics at low pitch and slow rates.
+constexpr double outputHeadroom = .94;
 using Controls = std::array<double, 10>;
 using Frequencies = std::array<double, 5>;
 double clip(double v, double low, double high) {
@@ -149,6 +154,7 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
             for (int k = 0; k < 5; k++)
                 h *= (1 - radii[k]) / (1.0 - feedback[i][k] * z + radii[k] * radii[k] * z * z);
             double a = hz < .45 * fs ? 2 / (pi * harmonic) : 0;
+            a *= std::abs(1.0 - voicedEmphasis * z);
             t += std::norm(h * a);
         }
         for (int j = 0; j <= 256; j++) {
@@ -160,7 +166,7 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
         tonal.push_back(std::max(1e-8, std::sqrt(t / 2)));
         noisy.push_back(std::max(1e-8, std::sqrt(w / 257)));
     }
-    // Tomi selected the -3 dB noise audition. Keep periodic excitation unchanged.
+    // Preserve the previously selected -3 dB noise level.
     constexpr double noiseScale = 0.7079457843841379;
     Smooth voice(4, 0), breath(4, 0), gain(3, 0), mix(2, 0), slevel(3, 0);
     Smooth levels[] = {Smooth(3, 0), Smooth(3, 0), Smooth(3, 0)};
@@ -168,7 +174,7 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
     double norms[] = {std::sqrt(2600 / fs), std::sqrt(4000 / fs), std::sqrt(6000 / fs),
                       std::sqrt(2200 / fs)};
     Noise noise;
-    double phaseClock = 0, previous[5] = {}, older[5] = {};
+    double phaseClock = 0, previousExcitation = 0, previous[5] = {}, older[5] = {};
     // Run the extra silent preparation through the model, but do not send
     // it to playback. In particular, one must not gain 48 ms of leading silence.
     std::vector<int16_t> pcm(n - preparationSamples);
@@ -192,11 +198,14 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
             double t = (phase - 1) / dt;
             exc -= t * t + 2 * t + 1;
         }
+        double shapedExcitation = exc - voicedEmphasis * previousExcitation;
+        previousExcitation = exc;
         double white = noise.normal(),
                // Reference-guided control law, listening-approved on sonorants.
                // Preserve zero excitation and anchor E (control 89) to its
                // previous level. This does not measure the audio envelope.
-            sample = exc * voice.step(.09 * std::sqrt(89.0 / 95) * std::pow(c[0] / 89, .2)) / tg +
+            sample = shapedExcitation *
+                         voice.step(.09 * std::sqrt(89.0 / 95) * std::pow(c[0] / 89, .2)) / tg +
                      white * (breath.step(.012 * std::sqrt(c[1])) * noiseScale) / ng;
         for (int k = 0; k < 5; k++) {
             double value = (1 - radii[k]) * sample + feedback[i][k] * previous[k] -
@@ -215,7 +224,7 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
                     sibilant * slevel.step(.035 * std::sqrt((c[7] + c[8] + c[9]) / 64)) * blend;
         double output = (sample + frication * noiseScale) * gain.step(c[6] / 255);
         // Fixed final gain preserves the approved envelope and filter behavior.
-        output = .8 * std::tanh(output / .8) * (volume / 100.0) * outputGain;
+        output = .8 * std::tanh(output / .8) * (volume / 100.0) * outputHeadroom * outputGain;
         if (i >= n - fade)
             output *= double(n - 1 - i) / double(fade - 1);
         if (!std::isfinite(output))

@@ -1,10 +1,10 @@
 #ifndef StageDir
-  #define StageDir "..\dist\accent-messenger-sapi-0.4.0"
+  #define StageDir "..\dist\accent-messenger-sapi-0.5.0"
 #endif
 [Setup]
 AppId={{B86EE667-B99D-4F51-8B2D-353477AF92E4}
 AppName=Accent Messenger SAPI
-AppVersion=0.4.0
+AppVersion=0.5.0
 AppPublisher=Tamas Geczy
 DefaultDirName={autopf}\Accent Messenger SAPI
 PrivilegesRequired=admin
@@ -12,7 +12,7 @@ MinVersion=6.1sp1
 Compression=lzma2
 SolidCompression=yes
 OutputDir={#StageDir}\..
-OutputBaseFilename=accent-messenger-sapi-0.4.0-setup
+OutputBaseFilename=accent-messenger-sapi-0.5.0-setup
 DisableProgramGroupPage=yes
 UninstallDisplayName=Accent Messenger SAPI
 [Files]
