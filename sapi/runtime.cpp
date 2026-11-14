@@ -93,13 +93,13 @@ HRESULT Runtime::synthesize(const std::string& text, const Settings& s, int rate
     }
     wake.notify_one();
     while (!done.load(std::memory_order_acquire)) {
-        if (!aborted && (site->GetActions() & SPVES_ABORT)) {
+        if (!aborted && (site->GetActions() & (SPVES_ABORT | SPVES_SKIP))) {
             aborted = true;
             msg_cancel(engine, ++generation);
         }
         Sleep(2);
     }
-    if (aborted || (site->GetActions() & SPVES_ABORT)) {
+    if (aborted || (site->GetActions() & (SPVES_ABORT | SPVES_SKIP))) {
         aborted = true;
         return S_OK;
     }

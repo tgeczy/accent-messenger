@@ -31,6 +31,7 @@ struct Segment {
     std::vector<Mark> marks;
     std::vector<Span> words;
     ULONG silence = 0;
+    size_t sentence = 0;
 };
 static bool compatible(const SPVSTATE& a, const SPVSTATE& b) {
     return a.eAction == b.eAction && a.RateAdj == b.RateAdj && a.Volume == b.Volume &&
@@ -102,6 +103,193 @@ static std::vector<Segment> segments(const SPVTEXTFRAG* fragment) {
     }
     flush();
     return result;
+}
+
+// Sentence navigation and separate character requests follow the host behavior
+// checked in TGSpeechBox's SAPI fixes (#207/#208). Keep marks in source-text
+// coordinates while splitting; the original driver has no word timestamps.
+static std::vector<Segment> speechUnits(const std::vector<Segment>& groups) {
+    std::vector<Segment> result;
+    size_t sentence = 0;
+    bool nextSentence = false;
+    for (const auto& group : groups) {
+        if (group.text.empty()) {
+            result.push_back(group);
+            result.back().sentence = sentence;
+            continue;
+        }
+        const bool spell = group.state.eAction == SPVA_SpellOut;
+        for (size_t begin = 0; begin < group.text.size();) {
+            size_t end = begin + 1;
+            if (spell) {
+                wchar_t c = group.text[begin];
+                if (c >= 0xd800 && c <= 0xdbff && end < group.text.size() &&
+                    group.text[end] >= 0xdc00 && group.text[end] <= 0xdfff)
+                    ++end;
+                while (end < group.text.size() && group.text[end] >= 0x300 &&
+                       group.text[end] <= 0x36f)
+                    ++end;
+            } else {
+                end = group.text.size();
+                for (size_t i = begin; i < group.text.size(); ++i) {
+                    if (group.text[i] != L'.' && group.text[i] != L'?' && group.text[i] != L'!')
+                        continue;
+                    size_t after = i + 1;
+                    while (after < group.text.size() &&
+                           (group.text[after] == L'"' || group.text[after] == L'\'' ||
+                            group.text[after] == L')' || group.text[after] == L']'))
+                        ++after;
+                    if (after < group.text.size() && !iswspace(group.text[after]))
+                        continue; // A decimal point or punctuation inside a word.
+                    while (after < group.text.size() && iswspace(group.text[after]))
+                        ++after;
+                    end = after;
+                    break;
+                }
+            }
+            Segment unit;
+            unit.state = group.state;
+            unit.text = group.text.substr(begin, end - begin);
+            const bool soundingText = std::any_of(unit.text.begin(), unit.text.end(),
+                                                  [](wchar_t c) { return !iswspace(c); });
+            if (nextSentence && soundingText) {
+                ++sentence;
+                nextSentence = false;
+            }
+            unit.sentence = sentence;
+            for (const auto& mark : group.marks)
+                if (mark.position >= begin &&
+                    (mark.position < end || (end == group.text.size() && mark.position == end)))
+                    unit.marks.push_back({mark.position - begin, mark.name});
+            for (const auto& word : group.words) {
+                size_t start = std::max(begin, word.position),
+                       stop = std::min(end, word.position + word.length);
+                if (start < stop)
+                    unit.words.push_back(
+                        {start - begin, stop - start, word.source + ULONG(start - word.position)});
+            }
+            if (!spell) {
+                size_t tail = unit.text.find_last_not_of(L" \t\r\n\"')]");
+                if (tail != std::wstring::npos &&
+                    (unit.text[tail] == L'.' || unit.text[tail] == L'?' || unit.text[tail] == L'!'))
+                    nextSentence = true;
+            }
+            result.push_back(std::move(unit));
+            begin = end;
+        }
+    }
+    // A bookmark immediately before a markup change can have been stored at
+    // the previous group's end. Associate it with the following speech unit
+    // so a skip requested at that mark uses the sentence that is about to play.
+    for (size_t i = 0; i + 1 < result.size(); ++i) {
+        auto& current = result[i];
+        auto& next = result[i + 1];
+        if (current.text.empty() || next.text.empty())
+            continue;
+        std::vector<Mark> leading;
+        for (const auto& mark : current.marks)
+            if (mark.position == current.text.size())
+                leading.push_back({0, mark.name});
+        current.marks.erase(
+            std::remove_if(current.marks.begin(), current.marks.end(),
+                           [&](const Mark& mark) { return mark.position == current.text.size(); }),
+            current.marks.end());
+        next.marks.insert(next.marks.begin(), leading.begin(), leading.end());
+    }
+    return result;
+}
+
+static HRESULT writeGroup(const Segment& group, const std::vector<short>& pcm,
+                          const Settings& config, ISpTTSEngineSite* site, ULONGLONG& byteOffset,
+                          bool& interrupted) {
+    ULONGLONG interest = 0;
+    HRESULT hr = site->GetEventInterest(&interest);
+    if (FAILED(hr))
+        return hr;
+    struct Pending {
+        size_t sample;
+        SPEVENT event;
+    };
+    std::vector<Pending> pending;
+    auto add = [&](size_t position, SPEVENT event) {
+        size_t sample = pcm.size() * position / std::max<size_t>(1, group.text.size());
+        event.ullAudioStreamOffset = byteOffset + sample * 2;
+        if (interest & SPFEI(event.eEventId))
+            pending.push_back({sample, event});
+    };
+    for (const auto& mark : group.marks) {
+        SPEVENT event{};
+        event.eEventId = SPEI_TTS_BOOKMARK;
+        event.elParamType = SPET_LPARAM_IS_STRING;
+        event.lParam = reinterpret_cast<LPARAM>(mark.name.c_str());
+        event.wParam = wcstoul(mark.name.c_str(), nullptr, 10);
+        add(mark.position, event);
+    }
+    for (const auto& word : group.words) {
+        SPEVENT event{};
+        event.eEventId = SPEI_WORD_BOUNDARY;
+        event.wParam = word.length;
+        event.lParam = word.source;
+        add(word.position, event);
+    }
+    std::stable_sort(pending.begin(), pending.end(),
+                     [](const auto& a, const auto& b) { return a.sample < b.sample; });
+    size_t offset = 0, eventIndex = 0;
+    for (;;) {
+        if (site->GetActions() & (SPVES_ABORT | SPVES_SKIP)) {
+            interrupted = true;
+            return S_OK;
+        }
+        // Queue an event immediately before its audio, including marks on text
+        // which makes no sound. Never queue the rest of a cancelled request.
+        while (eventIndex < pending.size() && pending[eventIndex].sample <= offset) {
+            if (site->GetActions() & (SPVES_ABORT | SPVES_SKIP)) {
+                interrupted = true;
+                return S_OK;
+            }
+            hr = site->AddEvents(&pending[eventIndex++].event, 1);
+            if (FAILED(hr))
+                return hr;
+        }
+        if (offset == pcm.size())
+            return S_OK;
+        size_t count = std::min<size_t>(320, pcm.size() - offset);
+        if (eventIndex < pending.size())
+            count = std::min(count, pending[eventIndex].sample - offset);
+        USHORT volume = 100;
+        hr = site->GetVolume(&volume);
+        if (FAILED(hr))
+            return hr;
+        short block[320];
+        double gain = std::min<unsigned>(volume, 100) / 100.0 * config.volume / 100.0 *
+                      std::min<ULONG>(group.silence ? 100 : group.state.Volume, 100) / 100.0;
+        for (size_t i = 0; i < count; ++i)
+            block[i] = short(std::nearbyint(pcm[offset + i] * gain));
+        ULONG bytes = ULONG(count * 2), written = 0;
+        ULONGLONG stalled = GetTickCount64();
+        while (written < bytes) {
+            if (site->GetActions() & (SPVES_ABORT | SPVES_SKIP)) {
+                interrupted = true;
+                return S_OK;
+            }
+            ULONG n = 0;
+            hr = site->Write(reinterpret_cast<const BYTE*>(block) + written, bytes - written, &n);
+            if (FAILED(hr))
+                return hr;
+            if (n > bytes - written || n % 2)
+                return E_FAIL;
+            if (!n) {
+                if (GetTickCount64() - stalled > 5000)
+                    return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+                Sleep(5);
+                continue;
+            }
+            stalled = GetTickCount64();
+            written += n;
+            offset += n / 2;
+            byteOffset += n;
+        }
+    }
 }
 
 class SapiEngine final : public ISpTTSEngine, public ISpObjectWithToken {
@@ -185,16 +373,47 @@ class SapiEngine final : public ISpTTSEngine, public ISpObjectWithToken {
         std::lock_guard<std::mutex> lock(speaking);
         Settings config = readSettings();
         ULONGLONG byteOffset = 0;
-        auto groups = segments(fragments);
-        for (auto& group : groups) {
+        auto groups = speechUnits(segments(fragments));
+        std::vector<size_t> sentences;
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (!std::any_of(groups[i].text.begin(), groups[i].text.end(),
+                             [](wchar_t c) { return !iswspace(c); }))
+                continue;
+            if (sentences.empty() || groups[i].sentence != groups[sentences.back()].sentence)
+                sentences.push_back(i);
+        }
+        // SAPI's TTS Engine Vendor Porting Guide: a zero skip restarts the
+        // current sentence; an incomplete skip reports its actual count and ends.
+        auto takeSkip = [&](size_t& index, bool& ended) -> HRESULT {
+            SPVSKIPTYPE type = SPVST_SENTENCE;
+            long wanted = 0, done = 0;
+            size_t current = 0;
+            bool known = SUCCEEDED(site->GetSkipInfo(&type, &wanted)) && type == SPVST_SENTENCE &&
+                         !sentences.empty();
+            if (known) {
+                while (current + 1 < sentences.size() && sentences[current + 1] <= index)
+                    ++current;
+                done = std::clamp(wanted, -long(current), long(sentences.size() - 1 - current));
+            }
+            HRESULT hr = site->CompleteSkip(done);
+            ended = !known || done != wanted;
+            if (!ended)
+                index = sentences[size_t(long(current) + done)];
+            return hr;
+        };
+        for (size_t groupIndex = 0; groupIndex < groups.size();) {
+            auto& group = groups[groupIndex];
             DWORD actions = site->GetActions();
             if (actions & SPVES_ABORT)
                 return S_OK;
             if (actions & SPVES_SKIP) {
-                auto hr = site->CompleteSkip(0);
-                if (FAILED(hr))
+                bool ended = false;
+                auto hr = takeSkip(groupIndex, ended);
+                if (FAILED(hr) || ended)
                     return hr;
+                continue;
             }
+            bool interrupted = false;
             std::vector<short> pcm;
             if (group.silence)
                 pcm.resize(size_t(group.silence) * 16, 0);
@@ -233,101 +452,32 @@ class SapiEngine final : public ISpTTSEngine, public ISpObjectWithToken {
                          int(std::clamp(group.state.PitchAdj.MiddleAdj, -10L, 10L)) * 5) /
                             10,
                         0, 9);
-                    bool aborted = false;
                     if (!chunk.empty())
-                        hr = runtime.synthesize(chunk, config, rate, pitch, site, pcm, aborted);
-                    if (FAILED(hr) || aborted)
+                        hr = runtime.synthesize(chunk, config, rate, pitch, site, pcm, interrupted);
+                    if (FAILED(hr))
                         return hr;
+                    if (interrupted)
+                        break;
                     start = end;
                     while (start < text.size() && text[start] == ' ')
                         ++start;
                 }
             }
-            // The original driver gives no word timestamps. These events are
-            // ordered estimates within a chunk, not recovered phoneme timing.
-            ULONGLONG interest = 0;
-            auto hr = site->GetEventInterest(&interest);
+            auto hr = S_OK;
+            if (!interrupted)
+                hr = writeGroup(group, pcm, config, site, byteOffset, interrupted);
             if (FAILED(hr))
                 return hr;
-            struct Pending {
-                size_t position;
-                bool mark;
-                size_t index;
-            };
-            std::vector<Pending> pending;
-            for (size_t i = 0; i < group.marks.size(); i++)
-                pending.push_back({group.marks[i].position, true, i});
-            for (size_t i = 0; i < group.words.size(); i++)
-                pending.push_back({group.words[i].position, false, i});
-            std::stable_sort(pending.begin(), pending.end(),
-                             [](auto& a, auto& b) { return a.position < b.position; });
-            for (auto& item : pending) {
-                SPEVENT event{};
-                event.ullAudioStreamOffset =
-                    byteOffset +
-                    2 * (pcm.size() * item.position / std::max<size_t>(1, group.text.size()));
-                if (item.mark) {
-                    auto& mark = group.marks[item.index];
-                    event.eEventId = SPEI_TTS_BOOKMARK;
-                    event.elParamType = SPET_LPARAM_IS_STRING;
-                    event.lParam = reinterpret_cast<LPARAM>(mark.name.c_str());
-                    event.wParam = wcstoul(mark.name.c_str(), nullptr, 10);
-                } else {
-                    auto& word = group.words[item.index];
-                    event.eEventId = SPEI_WORD_BOUNDARY;
-                    event.wParam = word.length;
-                    event.lParam = word.source;
-                }
-                if (interest & SPFEI(event.eEventId)) {
-                    hr = site->AddEvents(&event, 1);
-                    if (FAILED(hr))
-                        return hr;
-                }
-            }
-            for (size_t offset = 0; offset < pcm.size();) {
+            if (interrupted) {
                 if (site->GetActions() & SPVES_ABORT)
                     return S_OK;
-                USHORT volume = 100;
-                hr = site->GetVolume(&volume);
-                if (FAILED(hr))
+                bool ended = false;
+                hr = takeSkip(groupIndex, ended);
+                if (FAILED(hr) || ended)
                     return hr;
-                size_t count = std::min<size_t>(320, pcm.size() - offset);
-                short block[320];
-                double gain = std::min<unsigned>(volume, 100) / 100.0 * config.volume / 100.0 *
-                              std::min<ULONG>(group.silence ? 100 : group.state.Volume, 100) /
-                              100.0;
-                for (size_t i = 0; i < count; i++)
-                    block[i] = short(std::nearbyint(pcm[offset + i] * gain));
-                ULONG bytes = ULONG(count * 2), written = 0;
-                ULONGLONG stalled = GetTickCount64();
-                while (written < bytes) {
-                    DWORD actions = site->GetActions();
-                    if (actions & SPVES_ABORT)
-                        return S_OK;
-                    if (actions & SPVES_SKIP)
-                        return site->CompleteSkip(0);
-                    ULONG n = 0;
-                    hr = site->Write(reinterpret_cast<const BYTE*>(block) + written,
-                                     bytes - written, &n);
-                    if (FAILED(hr))
-                        return hr;
-                    if (n > bytes - written || n % 2)
-                        return E_FAIL;
-                    // Votrax's adapter documents zero-byte backpressure on old
-                    // SAPI hosts. Retry while remaining cancellable, but bound a
-                    // permanently stalled host rather than hanging its application.
-                    if (!n) {
-                        if (GetTickCount64() - stalled > 5000)
-                            return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-                        Sleep(5);
-                        continue;
-                    }
-                    stalled = GetTickCount64();
-                    written += n;
-                }
-                offset += count;
-                byteOffset += bytes;
+                continue;
             }
+            ++groupIndex;
         }
         return S_OK;
     }

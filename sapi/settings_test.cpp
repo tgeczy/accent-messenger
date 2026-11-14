@@ -10,8 +10,10 @@ int wmain(int argc, wchar_t** argv) {
     SetEnvironmentVariableW(L"ACCENT_MESSENGER_SETTINGS_MACHINE", shared.c_str());
     if (FAILED(prepareMachineSettings()))
         return 1;
-    Settings initial;
-    if (!writeSettings(initial))
+    // Start without preferences: opening and saving untouched controls must
+    // preserve the voice defaults (TGSpeechBox's first-save regression).
+    if (GetFileAttributesW(argv[1]) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(shared.c_str()) != INVALID_FILE_ATTRIBUTES)
         return 1;
     HWND dialog =
         CreateDialogParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1), nullptr, dialogProc, 0);
@@ -19,7 +21,13 @@ int wmain(int argc, wchar_t** argv) {
         return 1;
     Settings values;
     bool success = getValues(dialog, values) && values.voice == 5 && values.inflection == 100 &&
-                   values.spacing == 0 && values.volume == 100;
+                   values.spacing == 0 && values.volume == 100 && values.rate == 50 &&
+                   values.pitch == 50 && !values.readDigits;
+    success = success && writeSettings(values);
+    auto firstSave = readSettings();
+    success = success && firstSave.voice == 5 && firstSave.inflection == 100 &&
+              firstSave.spacing == 0 && firstSave.volume == 100 && firstSave.rate == 50 &&
+              firstSave.pitch == 50 && !firstSave.readDigits;
     SendDlgItemMessageW(dialog, 101, CB_SETCURSEL, 3, 0);
     SendDlgItemMessageW(dialog, 102, CB_SETCURSEL, 1, 0);
     SendDlgItemMessageW(dialog, 103, CB_SETCURSEL, 2, 0);

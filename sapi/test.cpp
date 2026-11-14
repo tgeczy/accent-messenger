@@ -72,6 +72,9 @@ class Site final : public ISpTTSEngineSite {
   public:
     std::vector<BYTE> audio;
     std::vector<ULONGLONG> marks;
+    std::vector<size_t> markWrites;
+    std::vector<std::wstring> markNames;
+    std::vector<long> completedSkips;
     LONG refs = 1;
     long rate = 0;
     USHORT volume = 100;
@@ -79,6 +82,11 @@ class Site final : public ISpTTSEngineSite {
     bool fail = false, abort = false;
     size_t abortAfter = 0;
     ULONGLONG abortAt = 0;
+    ULONGLONG skipAt = 0;
+    bool skip = false, skipDone = false, skipInfoFails = false;
+    long skipCount = 0;
+    std::wstring skipOnMark;
+    ULONG writeCalls = 0, zeroOnWrite = 0;
     STDMETHODIMP QueryInterface(REFIID i, void** p) override {
         if (!p)
             return E_POINTER;
@@ -97,8 +105,13 @@ class Site final : public ISpTTSEngineSite {
     }
     STDMETHODIMP AddEvents(const SPEVENT* events, ULONG count) override {
         for (ULONG i = 0; i < count; i++)
-            if (events[i].eEventId == SPEI_TTS_BOOKMARK)
+            if (events[i].eEventId == SPEI_TTS_BOOKMARK) {
                 marks.push_back(events[i].ullAudioStreamOffset);
+                markWrites.push_back(audio.size());
+                markNames.emplace_back(reinterpret_cast<const wchar_t*>(events[i].lParam));
+                if (!skipDone && markNames.back() == skipOnMark)
+                    skip = true;
+            }
         return S_OK;
     }
     STDMETHODIMP GetEventInterest(ULONGLONG* p) override {
@@ -109,13 +122,16 @@ class Site final : public ISpTTSEngineSite {
         return abort || (abortAfter && audio.size() >= abortAfter) ||
                        (abortAt && GetTickCount64() >= abortAt)
                    ? SPVES_ABORT
-                   : 0;
+                   : ((skip || (skipAt && GetTickCount64() >= skipAt)) && !skipDone ? SPVES_SKIP
+                                                                                    : 0);
     }
     STDMETHODIMP Write(const void* data, ULONG count, ULONG* written) override {
         if (fail)
             return E_FAIL;
-        if (zeros) {
-            --zeros;
+        ++writeCalls;
+        if (zeros || (zeroOnWrite && writeCalls == zeroOnWrite)) {
+            if (zeros)
+                --zeros;
             *written = 0;
             return S_OK;
         }
@@ -136,10 +152,12 @@ class Site final : public ISpTTSEngineSite {
     }
     STDMETHODIMP GetSkipInfo(SPVSKIPTYPE* type, long* count) override {
         *type = SPVST_SENTENCE;
-        *count = 0;
-        return S_OK;
+        *count = skipCount;
+        return skipInfoFails ? E_FAIL : S_OK;
     }
-    STDMETHODIMP CompleteSkip(long) override {
+    STDMETHODIMP CompleteSkip(long count) override {
+        completedSkips.push_back(count);
+        skipDone = true;
         return S_OK;
     }
 };
@@ -161,6 +179,147 @@ static std::vector<BYTE> say(ISpTTSEngine* engine, const wchar_t* text) {
     okay(speak(engine, site, &f), "Speak");
     require(!site.audio.empty(), "No speech");
     return site.audio;
+}
+
+// Regression cases adapted to this original-driver engine from TGSpeechBox's
+// SAPI fixes. The site never opens an audio device or registers a real voice.
+static void hostRegressions(ISpTTSEngine* engine) {
+    unsigned failures = 0;
+    auto check = [&](const char* name, auto body) {
+        try {
+            body();
+            printf("PASS host: %s\n", name);
+        } catch (const std::exception& error) {
+            ++failures;
+            printf("FAIL host: %s: %s\n", name, error.what());
+        }
+    };
+    check("partial writes and a later zero write", [&] {
+        auto expected = say(engine, L"Hello there.");
+        Site site;
+        site.partial = 62;
+        site.zeroOnWrite = 5;
+        auto text = fragment(L"Hello there.");
+        okay(speak(engine, site, &text), "Partial write");
+        require(site.audio == expected, "Lost or repeated samples");
+    });
+    check("application and markup volume multiply", [&] {
+        auto expected = say(engine, L"Hello there.");
+        Site site;
+        site.volume = 50;
+        auto text = fragment(L"Hello there.");
+        text.State.Volume = 50;
+        okay(speak(engine, site, &text), "Combined volume");
+        require(site.audio.size() == expected.size(), "Volume duration");
+        for (size_t i = 0; i < expected.size(); i += 2) {
+            short x, y;
+            memcpy(&x, expected.data() + i, 2);
+            memcpy(&y, site.audio.data() + i, 2);
+            require(abs(int(x) - 4 * int(y)) <= 2, "Volume does not compose");
+        }
+    });
+    check("application and markup rates add", [&] {
+        Site combined, equivalent;
+        auto text = fragment(L"Hello there.");
+        combined.rate = 2;
+        text.State.RateAdj = 2;
+        say(engine, L"Ready.");
+        okay(speak(engine, combined, &text), "Combined rate");
+        equivalent.rate = 4;
+        text.State.RateAdj = 0;
+        say(engine, L"Ready.");
+        okay(speak(engine, equivalent, &text), "Equivalent rate");
+        require(combined.audio == equivalent.audio, "Rate does not compose");
+    });
+    check("spelling uses independent character requests", [&] {
+        say(engine, L"Ready.");
+        std::vector<BYTE> expected;
+        for (const wchar_t* letter : {L"A", L"B", L"C", L"1"}) {
+            auto part = say(engine, letter);
+            expected.insert(expected.end(), part.begin(), part.end());
+        }
+        say(engine, L"Ready.");
+        Site site;
+        auto text = fragment(L"ABC1", SPVA_SpellOut);
+        okay(speak(engine, site, &text), "Spell out");
+        require(site.audio == expected, "Letters pronounced as one utterance");
+    });
+    check("silent bookmarks and bookmarks at accepted audio offsets", [&] {
+        Site silent;
+        auto markOnly = fragment(L"9", SPVA_Bookmark);
+        okay(speak(engine, silent, &markOnly), "Silent bookmark");
+        require(silent.audio.empty() && silent.marks == std::vector<ULONGLONG>{0},
+                "Silent bookmark missing");
+        Site site;
+        site.partial = 62;
+        auto a = fragment(L"Hello "), mark = fragment(L"7", SPVA_Bookmark), b = fragment(L"there.");
+        a.pNext = &mark;
+        mark.pNext = &b;
+        okay(speak(engine, site, &a), "Timed bookmark");
+        require(site.marks.size() == 1 && site.marks[0] == site.markWrites[0] &&
+                    site.marks[0] > 0 && site.marks[0] < site.audio.size(),
+                "Bookmark queued before its audio position");
+    });
+    check("abort does not queue later bookmarks and next request recovers", [&] {
+        auto baseline = say(engine, L"Hello there.");
+        Site site;
+        site.partial = 62;
+        site.abortAfter = 62;
+        auto a = fragment(L"Hello "), mark = fragment(L"7", SPVA_Bookmark), b = fragment(L"there.");
+        a.pNext = &mark;
+        mark.pNext = &b;
+        okay(speak(engine, site, &a), "Abort");
+        require(site.audio.size() == 62 && site.marks.empty(), "Cancelled events leaked");
+        require(say(engine, L"Hello there.") == baseline, "Cancel contaminated next request");
+    });
+    check("skip interrupts synthesis and next request recovers", [&] {
+        auto baseline = say(engine, L"Hello there.");
+        Site site;
+        site.skipAt = GetTickCount64() + 2;
+        site.skipCount = 1;
+        auto a = fragment(L"This is a longer sentence that should be skipped during synthesis. "),
+             mark = fragment(L"2", SPVA_Bookmark), b = fragment(L"Two.");
+        a.pNext = &mark;
+        mark.pNext = &b;
+        okay(speak(engine, site, &a), "Skip synthesis");
+        require(site.completedSkips == std::vector<long>{1} &&
+                    site.markNames == std::vector<std::wstring>{L"2"} && site.markWrites[0] == 0,
+                "Skipped synthesis leaked audio or lost destination");
+        require(say(engine, L"Hello there.") == baseline, "Skip contaminated next request");
+    });
+    auto navigation = [&](long count, const wchar_t* trigger, std::vector<std::wstring> names,
+                          long completed, bool badInfo = false) {
+        Site site;
+        site.skipCount = count;
+        site.skip = !*trigger;
+        site.skipOnMark = trigger;
+        site.skipInfoFails = badInfo;
+        auto m1 = fragment(L"1", SPVA_Bookmark), a = fragment(L"One. "),
+             m2 = fragment(L"2", SPVA_Bookmark), b = fragment(L"Two. "),
+             m3 = fragment(L"3", SPVA_Bookmark), c = fragment(L"Three.");
+        b.State.RateAdj = 1; // Exercise a bookmark followed by a markup change.
+        m1.pNext = &a;
+        a.pNext = &m2;
+        m2.pNext = &b;
+        b.pNext = &m3;
+        m3.pNext = &c;
+        okay(speak(engine, site, &m1), "Skip Speak");
+        require(site.completedSkips == std::vector<long>{completed}, "Wrong CompleteSkip count");
+        require(site.markNames == names, "Skip resumed at wrong sentence");
+        if (names.empty())
+            require(site.audio.empty(), "Incomplete skip continued speaking");
+    };
+    check("forward sentence skip", [&] { navigation(1, L"", {L"2", L"3"}, 1); });
+    check("backward sentence skip",
+          [&] { navigation(-1, L"2", {L"1", L"2", L"1", L"2", L"3"}, -1); });
+    check("zero skip restarts current sentence",
+          [&] { navigation(0, L"2", {L"1", L"2", L"2", L"3"}, 0); });
+    check("incomplete forward skip reports actual count and ends",
+          [&] { navigation(8, L"", {}, 2); });
+    check("incomplete backward skip reports actual count and ends",
+          [&] { navigation(-8, L"", {}, 0); });
+    check("failed skip query ends cleanly", [&] { navigation(1, L"", {}, 0, true); });
+    require(!failures, "SAPI host regressions failed");
 }
 int wmain(int argc, wchar_t** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
@@ -291,6 +450,7 @@ int wmain(int argc, wchar_t** argv) {
                     wave->nChannels == 1 && wave->wBitsPerSample == 16,
                 "PCM format");
         CoTaskMemFree(wave);
+        hostRegressions(engine);
         auto baseline = say(engine, L"Hello. This is my voice.");
         require(baseline == say(engine, L"Hello. This is my voice."), "Warm voice differs");
         auto a = fragment(L"Hello. "), mark = fragment(L"12", SPVA_Bookmark),

@@ -35,7 +35,7 @@ report = {'architecture': arch, 'python': sys.version.split()[0],
 reference = None
 if args.reference:
     sys.path.insert(0, str(ROOT / 'tools'))
-    from experimental_synth import ExperimentalSynth
+    from experimental_synth import ExperimentalSynth, SELECTED_RESONANCES
     import numpy as np
     reference = ExperimentalSynth(paths[1], paths[2])
 texts = ['Hello.', 'This is my voice.', 'Sassy fish, zippy zebras.', 'B', 'D', 'E', 'T', 'X',
@@ -58,7 +58,9 @@ for rate, pitch, volume in ([] if args.skip_corpus else [(5, 5, 100), (0, 0, 73)
             start = time.perf_counter()
             old, stats = reference.synthesize(text, rate, pitch, volume, noise_scale=10**(-3/20),
                                               formant_setup=True, voiced_exponent=.2, p_transition=True,
-                                              straight_e=True, voiced_emphasis=.8, output_headroom=.94)
+                                              straight_e=True, voiced_emphasis=.8, output_headroom=.94,
+                                              resonance_tuning=SELECTED_RESONANCES,
+                                              frication_scale=10**(-10/20))
             row['reference_ms'] = (time.perf_counter()-start)*1000
             assert engine.frames() == bytes(reference.probe.dsp_bytes), row
             assert len(old) == len(pcm), row

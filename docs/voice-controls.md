@@ -42,6 +42,14 @@ sonorant level curve, or the separate consonant-noise paths. It is a listening-
 selected reconstruction, not a recovered DSP equation. Output samples differ
 from earlier releases even at the same settings.
 
+Version 0.5.1 fits the lower resonance frequencies and glide speed to recorded
+Messenger vowels, moves the fixed upper resonances to about 3.35 and 4.26 kHz,
+and narrows those upper resonances. Listening selected the original lower
+bandwidths (60/140/150 Hz) over the wider fitted alternative. Separate additive
+frication is reduced by another 10 dB; aspiration and the existing amplitude
+law remain unchanged. These changes improve the selected comparison without
+establishing the missing DSP's equations or eliminating every level fluctuation.
+
 The isolated E/e onset correction added in 0.4.0 retains full master level at
 the first voiced record for E/e with an optional final period. It leaves the
 original driver's raw records unchanged.

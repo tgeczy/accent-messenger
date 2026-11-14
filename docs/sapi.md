@@ -1,6 +1,6 @@
 # Accent Messenger SAPI
 
-Install `accent-messenger-sapi-0.5.0-setup.exe` with administrator approval,
+Install `accent-messenger-sapi-0.5.1-setup.exe` with administrator approval,
 then select **Accent Messenger** in a SAPI 5 application. Both 32-bit and
 64-bit clients are supported. Close speech applications before updating.
 The installer does not change your default voice. Uninstall through Windows
@@ -51,10 +51,17 @@ ReadDigits = 0
 
 The native engine and approved sound match the NVDA add-on. SAPI application
 rate, volume and XML pitch/volume changes combine with the settings. Compatible
-fragments and bookmarks stay together until the normal 160-character chunk
-limit, preventing an artificial pause at every fragment. Bookmarks and word
-events retain order, with estimated timing within each chunk: the original
-driver supplies no word timestamps. Skip requests report zero skipped units.
+fragments and bookmarks stay together within sentences and the 160-character
+chunk limit, preventing an artificial pause at every fragment. Spelling submits
+characters separately. Sentence skips move forward or backward; zero restarts
+the current sentence. An unavailable destination reports the actual skipped
+count and ends the request. Sentence boundaries use punctuation, so abbreviations
+can be treated as boundaries.
+
+Bookmarks and word events retain order, with estimated timing within each
+chunk: the original driver supplies no word timestamps. Events are submitted
+when output reaches their estimated positions, including bookmarks without
+audio. Cancellation drops events that have not reached that point.
 Phoneme-tag pronunciation falls back to its supplied text; a SAPI phoneme
 alphabet mapping is not implemented.
 
@@ -90,7 +97,9 @@ The maintainer has confirmed live SAPI speech. Automated validation covers both
 architectures: real Windows SpVoice output to an in-memory
 PCM stream, COM lifetime and isolated registration/unregistration, grouped
 bookmarks, partial and zero-byte writes, cancellation during rendering and output,
-volume, settings restoration, and 242 English number-parser comparisons per
+combined application/markup rate and volume, character spelling, forward/backward/zero
+sentence skips, incomplete skips, first-save defaults, settings restoration, and
+242 English number-parser comparisons per
 architecture. The native settings dialog is exercised while hidden. These checks
 open no audio device and install no voice into the real registry. Live SAPI
 application and Windows 7 testing remain separate from these automated checks.

@@ -15,6 +15,14 @@ constexpr double pi = 3.14159265358979323846, fs = 16000;
 // Listening-selected periodic-source colour. Include the same response in
 // tonal gain prediction so this changes harmonic balance, not source level.
 constexpr double voicedEmphasis = .8;
+// Fitted to original Messenger vowels, then selected by listening with the
+// original lower-formant bandwidths restored. These are acoustic parameters,
+// not a decoding of the missing DSP's filter coefficients.
+constexpr double formantScale[] = {0.8569602937207547, 1.0728000348151872, 1.1108429163637665};
+constexpr double glideScale = 0.7911904590386245;
+constexpr double upperFormants[] = {3349.9474678449235, 4258.870438942602};
+constexpr double upperBandwidthScale = 0.5829121036456576;
+constexpr double fricationScale = 0.31622776601683794; // -10 dB; aspiration is separate.
 // Fixed headroom for the stronger harmonics at low pitch and slow rates.
 constexpr double outputHeadroom = .94;
 using Controls = std::array<double, 10>;
@@ -114,11 +122,12 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
     size_t n = control.size();
     std::vector<Frequencies> feedback(n);
     std::vector<double> pitch(n), tonal, noisy;
-    const double bandwidth[] = {60, 140, 150, 220, 270};
+    const double bandwidth[] = {60, 140, 150, 220 * upperBandwidthScale, 270 * upperBandwidthScale};
     double radii[5];
     for (int k = 0; k < 5; k++)
         radii[k] = std::exp(-pi * bandwidth[k] / fs);
-    Smooth f1(p[7], control[0][2]), f2(p[8], control[0][3]), f3(p[9], control[0][4]);
+    Smooth f1(p[7] * glideScale, control[0][2]), f2(p[8] * glideScale, control[0][3]),
+        f3(p[9] * glideScale, control[0][4]);
     double previousF3 = control[0][4];
     // The stored P record has the extreme 255 target. Its long F3 glide
     // produced an unwanted extra vowel. Retain the fitted timing elsewhere.
@@ -129,16 +138,17 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
         if (i % 1024 == 0)
             check(gen, ticket);
         if (control[i][4] != previousF3) {
-            f3.setTime(control[i][4] == 255 || previousF3 == 255 ? 10 : p[9]);
+            f3.setTime(control[i][4] == 255 || previousF3 == 255 ? 10 : p[9] * glideScale);
             previousF3 = control[i][4];
         }
         double effective[] = {f1.step(control[i][2]), f2.step(control[i][3]),
                               f3.step(control[i][4]), 0, 0};
         for (int k = 0; k < 5; k++) {
             double frequency =
-                k < 3 ? clip(p[k + 3] + p[k] * std::sqrt(std::max(0.0, 256 - effective[k])), 120,
-                             4500)
-                      : (k == 3 ? 3300 : 3700);
+                k < 3 ? clip((p[k + 3] + p[k] * std::sqrt(std::max(0.0, 256 - effective[k]))) *
+                                 formantScale[k],
+                             120, 4500)
+                      : upperFormants[k - 3];
             feedback[i][k] = 2 * radii[k] * std::cos(2 * pi * frequency / fs);
         }
         pitch[i] = pitchFilter.step(clip(1.3604379448 * control[i][5] + 53.520929659, 55, 220));
@@ -222,7 +232,7 @@ std::vector<int16_t> render(const std::vector<uint8_t>& frames, const double* p,
         double sibilant = filters[3].step(white) / norms[3];
         frication = frication * (1 - blend) +
                     sibilant * slevel.step(.035 * std::sqrt((c[7] + c[8] + c[9]) / 64)) * blend;
-        double output = (sample + frication * noiseScale) * gain.step(c[6] / 255);
+        double output = (sample + frication * noiseScale * fricationScale) * gain.step(c[6] / 255);
         // Fixed final gain preserves the approved envelope and filter behavior.
         output = .8 * std::tanh(output / .8) * (volume / 100.0) * outputHeadroom * outputGain;
         if (i >= n - fade)
